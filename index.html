@@ -232,7 +232,28 @@
             padding: 0 5px;
             font-weight: 600;
         }
+	.pagination-jump {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            margin-left: 10px;
+        }
+        .pagination-jump input[type="number"] {
+            width: 60px;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            font-size: 13px;
+            text-align: center;
+            /* Remove spinner arrows */
+            -moz-appearance: textfield;
+        }
 
+        .pagination-jump input[type="number"]::-webkit-outer-spin-button,
+        .pagination-jump input[type="number"]::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
         /* Loading States */
         .loading-placeholder {
             background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
@@ -594,7 +615,7 @@
         </header>
 
         <nav class="nav-buttons">
-            <button class="nav-btn active" data-section="gallery">Photo Gallery<br>图片展览</button>
+            <button class="nav-btn active" data-section="gallery">Photo Timeline<br>时间线相册</button>
             <button class="nav-btn" data-section="sources">By Source<br>按来源分类</button>
         </nav>
 
@@ -732,7 +753,9 @@
         let expandedYears = new Set();
         let currentFilter = 'all';
         let yearPaginationSettings = {};
-        let imageObserver = null;
+	let imageObserver = null;
+        let sourcePaginationSettings = {}; 
+        let expandedSources = new Set(); 
         
         /* ---------- Enhanced Modal Variables ---------- */
         let currentPhotoGroup = [];
@@ -921,6 +944,19 @@
                 }
             }
             updateStats();
+        }
+
+/* ---------- Helper for Source Tab ---------- */
+        function getSourceSafeId(sourceName) {
+            if (!sourceName) return 'unknown';
+            
+            // Use a simple hash function to create a unique ID
+            let hash = 5381;
+            for (let i = 0; i < sourceName.length; i++) {
+                hash = ((hash << 5) + hash) + sourceName.charCodeAt(i); /* hash * 33 + c */
+            }
+            // Return a safe, positive ID string
+            return 'source-id-' + (hash & 0x7FFFFFFF);
         }
 
         /* ---------- Initialization ---------- */
@@ -1173,7 +1209,7 @@ async function loadPhotoData() {
             setupLazyLoadingForYear(year);
         }
 
-        function createPaginationButtons(year, currentPage, totalPages) {
+function createPaginationButtons(year, currentPage, totalPages) {
             let html = '';
             const maxPagesToShow = 5;
             let startPage, endPage;
@@ -1207,14 +1243,38 @@ async function loadPhotoData() {
             }
             if (currentPage < totalPages) html += `<button class="btn" onclick="goToPage('${year}', ${currentPage + 1})">Next ›</button>`;
 
+            // --- ADD THIS NEW PART ---
+            html += `
+                <span class="pagination-jump">
+                    Go to:
+                    <input type="number" id="page-input-${year}" min="1" max="${totalPages}" placeholder="Page" onkeydown="if(event.key==='Enter') jumpToPage('${year}', ${totalPages});">
+                    <button class="btn" onclick="jumpToPage('${year}', ${totalPages})">Go</button>
+                </span>
+            `;
+            // --- END NEW PART ---
+
             return html;
         }
+
 
         function goToPage(year, page) {
             if (!yearPaginationSettings[year]) return;
             yearPaginationSettings[year].currentPage = parseInt(page, 10);
             renderYearPage(year);
             document.getElementById(`photos-${year}`).scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+	function jumpToPage(year, totalPages) {
+            const input = document.getElementById(`page-input-${year}`);
+            if (!input) return;
+            const page = parseInt(input.value, 10);
+            
+            if (page >= 1 && page <= totalPages) {
+                goToPage(year, page);
+            } else {
+                alert(`Please enter a page number between 1 and ${totalPages}.`);
+                input.value = ''; // Clear invalid input
+            }
         }
 
         /* ---------- Lazy Loading ---------- */
@@ -1325,33 +1385,227 @@ async function loadPhotoData() {
             if (section === 'sources') loadSourcesView();
         }
 
-        function loadSourcesView() {
+function loadSourcesView() {
             const sourceGroups = photoData.reduce((acc, photo) => {
                 const source = photo.source || 'Unknown';
-                if (!acc[source]) acc[source] = [];
-                acc[source].push(photo);
+                if (!acc[source]) acc[source] = { photos: [], name: source };
+                acc[source].photos.push(photo);
                 return acc;
             }, {});
 
             const container = document.getElementById('sourcesContainer');
-            container.innerHTML = Object.entries(sourceGroups)
-                .sort(([,a], [,b]) => b.length - a.length)
-                .map(([source, photos]) => `
-                    <div style="margin-bottom: 30px; padding: 20px; background: white; border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.08);">
-                        <h3 style="color: #ff6b6b; margin-bottom: 15px;">${source} (${photos.length} photos)</h3>
-                        <div class="year-photos-grid">
-                            ${photos.slice(0, 8).map(photo => `
-                                <div class="timeline-photo" onclick="openPhotoModal(${photo.id})">
-                                    <img src="${generateImgurThumbnail(photo.url, 'm')}" alt="${photo.source}">
-                                    <div class="photo-overlay">
-                                        <span class="photo-date">${photo.date}</span>
+            
+            // Sort sources by photo count (most first)
+            const sortedSources = Object.values(sourceGroups)
+                                        .sort((a, b) => b.photos.length - a.photos.length);
+
+            container.innerHTML = sortedSources.map(group => {
+                const sourceName = group.name;
+                const photos = group.photos;
+                const safeId = getSourceSafeId(sourceName); // Create a safe ID
+                
+                // --- FIX: Escape single quotes in the name ---
+                const escapedSourceName = sourceName.replace(/'/g, "\\'");
+
+                // Get 4 preview thumbnails
+                const previewPhotos = photos.slice(0, 4);
+                const previewHTML = `
+                    <div class="year-preview">
+                        ${previewPhotos.map(p => `<img src="${generateImgurThumbnail(p.url, 's')}" alt="Preview" class="preview-thumb">`).join('')}
+                        ${photos.length > 4 ? `<div class="preview-more">+${photos.length - 4}</div>` : ''}
+                    </div>`;
+
+                // This structure mimics the .timeline-year structure
+                return `
+                    <div class="timeline-year" data-source="${safeId}">
+                        <div class="timeline-year-header" onclick="toggleSource('${escapedSourceName}')">
+                            <div class="year-header-content">
+                                <div class="year-header-top">
+                                    <span class="year-title">${sourceName}</span>
+                                    <div style="display: flex; align-items: center; gap: 10px;">
+                                        <span class="timeline-year-count">${photos.length} photos</span>
+                                        <span class="expand-icon">▼</span>
                                     </div>
                                 </div>
-                            `).join('')}
+                                ${previewHTML}
+                            </div>
                         </div>
-                        ${photos.length > 8 ? `<p style="text-align: center; margin-top: 15px; color: #666;">And ${photos.length - 8} more...</p>` : ''}
+                        <div class="timeline-year-content">
+                            <div class="year-controls">
+                                <label for="per-page-source-${safeId}">Photos per page:</label>
+                                <select id="per-page-source-${safeId}" onchange="changeSourcePhotosPerPage('${escapedSourceName}', this.value)">
+                                    <option value="21">21</option>
+                                    <option value="42">42</option>
+                                    <option value="84">84</option>
+                                    <option value="all">All</option>
+                                </select>
+                            </div>
+                            <div class="year-photos-grid" id="photos-source-${safeId}"></div>
+                            <div class="pagination-nav" id="pagination-nav-source-${safeId}"></div>
+                        </div>
                     </div>
-                `).join('');
+                `;
+            }).join('');
+        }
+
+
+/* ---------- "By Source" Tab Functions (New) ---------- */
+        
+        function toggleSource(sourceName) {
+            const safeId = getSourceSafeId(sourceName);
+            const sourceElement = document.querySelector(`[data-source="${safeId}"]`);
+            if (!sourceElement) return;
+
+            const isExpanded = sourceElement.classList.toggle('expanded');
+            
+            if (isExpanded) {
+                expandedSources.add(sourceName);
+                if (!sourcePaginationSettings[sourceName]) {
+                    sourcePaginationSettings[sourceName] = { perPage: 21, currentPage: 1 };
+                }
+                document.getElementById(`per-page-source-${safeId}`).value = 
+                    sourcePaginationSettings[sourceName].perPage === Infinity ? 'all' : sourcePaginationSettings[sourceName].perPage;
+                
+                renderSourcePage(sourceName);
+            } else {
+                expandedSources.delete(sourceName);
+                unloadSourceImages(sourceName);
+            }
+        }
+
+        function changeSourcePhotosPerPage(sourceName, perPageValue) {
+            const perPage = perPageValue === 'all' ? Infinity : parseInt(perPageValue, 10);
+            sourcePaginationSettings[sourceName] = { perPage, currentPage: 1 };
+            renderSourcePage(sourceName);
+        }
+
+        function renderSourcePage(sourceName) {
+            if (!sourcePaginationSettings[sourceName]) {
+                sourcePaginationSettings[sourceName] = { perPage: 21, currentPage: 1 };
+            }
+            
+            const { perPage, currentPage } = sourcePaginationSettings[sourceName];
+            // Filter photos for this specific source
+            const sourcePhotos = photoData.filter(p => (p.source || 'Unknown') === sourceName);
+            
+            const totalPhotos = sourcePhotos.length;
+            const safeId = getSourceSafeId(sourceName);
+            const photosGrid = document.getElementById(`photos-source-${safeId}`);
+            const paginationNav = document.getElementById(`pagination-nav-source-${safeId}`);
+
+            if (!photosGrid || !paginationNav) return;
+
+            let startIndex, endIndex;
+            if (perPage === Infinity) {
+                startIndex = 0;
+                endIndex = totalPhotos;
+            } else {
+                startIndex = (currentPage - 1) * perPage;
+                endIndex = Math.min(startIndex + perPage, totalPhotos);
+            }
+            
+            // Use the existing generatePhotosHTML function
+            photosGrid.innerHTML = generatePhotosHTML(sourcePhotos.slice(startIndex, endIndex));
+
+            paginationNav.innerHTML = '';
+            if (perPage !== Infinity && totalPhotos > perPage) {
+                const totalPages = Math.ceil(totalPhotos / perPage);
+                paginationNav.innerHTML = createSourcePaginationButtons(sourceName, currentPage, totalPages);
+            }
+            
+            // Re-use the existing lazy-loading logic for the new images
+            setupLazyLoadingForSource(sourceName);
+        }
+
+function createSourcePaginationButtons(sourceName, currentPage, totalPages) {
+            let html = '';
+            const maxPagesToShow = 5;
+            let startPage, endPage;
+
+            // --- FIX: Escape single quotes in the name ---
+            const escapedSourceName = sourceName.replace(/'/g, "\\'");
+
+            if (totalPages <= maxPagesToShow) {
+                startPage = 1; endPage = totalPages;
+            } else {
+                const maxBefore = Math.floor(maxPagesToShow / 2);
+                const maxAfter = Math.ceil(maxPagesToShow / 2) - 1;
+                if (currentPage <= maxBefore) {
+                    startPage = 1; endPage = maxPagesToShow;
+                } else if (currentPage + maxAfter >= totalPages) {
+                    startPage = totalPages - maxPagesToShow + 1; endPage = totalPages;
+                } else {
+                    startPage = currentPage - maxBefore; endPage = currentPage + maxAfter;
+                }
+            }
+
+            if (currentPage > 1) html += `<button class="btn" onclick="goToSourcePage('${escapedSourceName}', ${currentPage - 1})">‹ Prev</button>`;
+            if (startPage > 1) {
+                html += `<button class="btn" onclick="goToSourcePage('${escapedSourceName}', 1)">1</button>`;
+                if (startPage > 2) html += `<span>...</span>`;
+            }
+            for (let i = startPage; i <= endPage; i++) {
+                html += `<button class="btn ${i === currentPage ? 'primary' : ''}" ${i === currentPage ? 'disabled' : `onclick="goToSourcePage('${escapedSourceName}', ${i})"`}>${i}</button>`;
+            }
+            if (endPage < totalPages) {
+                if (endPage < totalPages - 1) html += `<span>...</span>`;
+                html += `<button class="btn" onclick="goToSourcePage('${escapedSourceName}', ${totalPages})">${totalPages}</button>`;
+            }
+            if (currentPage < totalPages) html += `<button class="btn" onclick="goToSourcePage('${escapedSourceName}', ${currentPage + 1})">Next ›</button>`;
+
+            // --- END NEW PART ---
+            const safeId = getSourceSafeId(sourceName);
+            html += `
+                <span class="pagination-jump">
+                    Go to:
+                    <input type="number" id="page-input-source-${safeId}" min="1" max="${totalPages}" placeholder="Page" onkeydown="if(event.key==='Enter') jumpToSourcePage('${escapedSourceName}', ${totalPages});">
+                    <button class="btn" onclick="jumpToSourcePage('${escapedSourceName}', ${totalPages})">Go</button>
+                </span>
+            `;
+            // --- END NEW PART ---
+
+            return html;
+        }
+
+
+        function goToSourcePage(sourceName, page) {
+            if (!sourcePaginationSettings[sourceName]) return;
+            sourcePaginationSettings[sourceName].currentPage = parseInt(page, 10);
+            renderSourcePage(sourceName);
+            
+            const safeId = getSourceSafeId(sourceName);
+            document.getElementById(`photos-source-${safeId}`).scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+	function jumpToSourcePage(sourceName, totalPages) {
+            const safeId = getSourceSafeId(sourceName);
+            const input = document.getElementById(`page-input-source-${safeId}`);
+            if (!input) return;
+            const page = parseInt(input.value, 10);
+            
+            if (page >= 1 && page <= totalPages) {
+                goToSourcePage(sourceName, page);
+            } else {
+                alert(`Please enter a page number between 1 and ${totalPages}.`);
+                input.value = ''; // Clear invalid input
+            }
+        }
+
+
+        function setupLazyLoadingForSource(sourceName) {
+            const safeId = getSourceSafeId(sourceName);
+            document.querySelectorAll(`#photos-source-${safeId} .lazy-image[data-src]`).forEach(img => {
+                img.classList.add('loading-placeholder');
+                if (imageObserver) imageObserver.observe(img);
+            });
+        }
+        
+        function unloadSourceImages(sourceName) {
+            const safeId = getSourceSafeId(sourceName);
+            document.querySelectorAll(`#photos-source-${safeId} img`).forEach(img => {
+                img.src = '';
+                img.classList.add('loading-placeholder');
+            });
         }
 
         /* ---------- Download Function ---------- */

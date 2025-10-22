@@ -1409,16 +1409,22 @@ async function loadPhotoData() {
             document.getElementById('timelineContainer').innerHTML = timelineHTML;
         }
 
-        function generatePhotosHTML(photos) {
-            return photos.map(photo => `
+	function generatePhotosHTML(photos) {
+            return photos.map(photo => {
+                let displayDate = photo.date; // Default to full date
+                if (photo.datePrecision === 'month') {
+                    // If precision is 'month', show 'YYYY-MM'
+                    displayDate = photo.date.substring(0, 7); 
+                }
+                return `
                 <div class="timeline-photo" onclick="openPhotoModal(${photo.id})">
                     <img data-src="${generateImgurThumbnail(photo.url, 'm')}" alt="Photo ${photo.id}" class="lazy-image">
                     <div class="photo-overlay">
-                        <span class="photo-date">${photo.date}</span>
+                        <span class="photo-date">${displayDate}</span>
                         <span class="photo-source">${photo.source || photo.note || ''}</span>
                     </div>
-                </div>
-            `).join('');
+		</div>
+            `}).join('');
         }
 
         function toggleYear(year) {

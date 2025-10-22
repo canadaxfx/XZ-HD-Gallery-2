@@ -16,7 +16,7 @@
         .container { max-width: 1200px; margin: 0 auto; padding: 10px; }
         header { text-align: center; padding: 10px 0; color: white; }
         h1 { font-size: 1.2rem; margin-bottom: 10px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
-        .subtitle { font-size: 0.8rem; opacity: 1; }
+        .subtitle { font-size: 0.75rem; opacity: 1; }
         .nav-buttons { display: flex; justify-content: center; gap: 15px; margin: 5px 0 10px; }
         .nav-btn, .btn {
             padding: 15px 15px; border: none; border-radius: 25px; cursor: pointer;
@@ -97,7 +97,7 @@
         .stat-label { font-size: 9px; opacity: 0.9; }
 
         /* Timeline Styles */
-        .timeline-container { max-width: 1000px; margin: 0 auto; }
+        .timeline-container, #sourcesContainer { max-width: 1000px; margin: 0 auto; }
         .timeline-year { 
             margin-bottom: 20px; border: 1px solid #e0e0e0; border-radius: 15px; 
             overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.08); background: white;
@@ -832,9 +832,12 @@
 </head>
 <body>
     <div class="container">
-        <header>
+	<header>
             <h1>Xiao Zhan HD Gallery-2<br>肖战高清图库-2 - 影视&代言&活动</h1>
-            <p class="subtitle" style="font-weight: 600; color: white;">* HD photos from various sources<br>* Slightly compressed photos and full size uncompressed photo sets available<br>* 中国区访客需VPN</p>
+            <p class="subtitle" style="font-weight: 400; color: white;">* HD photos from various sources (NOT including XZ Studio)<br>
+            * <a href="https://canadaxfx.github.io/XZ-photo-gallery/" target="_blank" style="color: white; text-decoration: underline;">Click here for XZ Studio Gallery 肖战(工作室)高清图库-1</a><br>
+            * Single photo and photo sets download available<br>
+            * 中国区访客需VPN</p>
         </header>
 
         <nav class="nav-buttons">
@@ -954,8 +957,8 @@
     
     <footer class="site-footer">
         <div class="footer-content">
-            <a class="footer-link" href="https://canadaxfx.github.io/XZ-photo-gallery/" target="_blank">XZ Studio Gallery</a>
-            <a class="footer-link" href="https://www.youtube.com/@CanadaXFX" target="_blank">YouTube Channel</a>
+            <a class="footer-link" href="https://canadaxfx.github.io/XZworks/" target="_blank">Screen Arts of Xiao Zhan</a>
+            <a class="footer-link" href="https://www.youtube.com/@CanadaXFX" target="_blank">CanadaXFX on YouTube</a>
         </div>
         <div class="copyright-notice">© 2025 CanadaXFX. All rights reserved.</div>
 
@@ -998,7 +1001,8 @@
         /* ---------- Photo Group Management ---------- */
         function getPhotoGroup(photo) {
             if (photo.groupName) {
-                return photoData.filter(p => p.groupName === photo.groupName && p.date === photo.date)
+                // Group photos by groupName only, regardless of date
+                return photoData.filter(p => p.groupName === photo.groupName)
                                 .sort((a, b) => (a.id - b.id));
             }
             return [photo];
